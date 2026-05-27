@@ -22,7 +22,7 @@ MAX_TOPICS_IN_MEMORY = 100
 # =================================
 
 print("📚 НЕЙРОСЕТЕВОЙ КОМБАЙН — КАФЕДРА ВЫЖИВАНИЯ")
-print("🤖 GPT-4o-mini + Flux | Учебный контент\n")
+print("🤖 Pollinations.ai (текст + картинки) | Учебный контент\n")
 
 
 class MemoryDB:
@@ -128,29 +128,15 @@ def clean_post(text):
     lines = text.split('\n')
     clean_lines = []
     for line in lines:
-        line_lower = line.lower()
-        if 'proxy' in line_lower and 'cheaper' in line_lower:
-            continue
-        if 'op.wtf' in line_lower:
-            continue
         if line.strip():
             clean_lines.append(line.strip())
     result = '\n'.join(clean_lines)
-    result = re.sub(r'Need proxies.*$', '', result, flags=re.IGNORECASE | re.MULTILINE)
-    result = re.sub(r'https?://op\.wtf.*$', '', result, flags=re.IGNORECASE | re.MULTILINE)
     result = re.sub(r'\n{3,}', '\n\n', result)
     return result.strip()
 
 
-def generate_post_with_gpt(topic):
-    print("📝 GPT-4o-mini пишет пост...")
-
-    try:
-        from g4f.client import Client
-        client = Client()
-    except ImportError:
-        print("❌ Установите g4f: pip install -U g4f[all]")
-        return None
+def generate_post_with_pollinations(topic):
+    print("📝 Pollinations.ai пишет пост...")
 
     post_type = get_post_type(topic)
 
@@ -220,19 +206,17 @@ def generate_post_with_gpt(topic):
     }
 
     prompt_text = prompts.get(post_type, prompts["general"])
+    encoded = quote(prompt_text)
+    url = f"https://text.pollinations.ai/{encoded}"
 
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt_text}],
-                timeout=45
-            )
-            post = response.choices[0].message.content.strip()
-            post = clean_post(post)
-            if len(post) > 100:
-                print(f"✅ Пост готов ({len(post)} символов)")
-                return post
+            response = requests.get(url, timeout=60)
+            if response.status_code == 200:
+                text = response.text.strip()
+                if len(text) > 100:
+                    print(f"✅ Пост готов ({len(text)} символов)")
+                    return text
         except Exception as e:
             print(f"⚠️ Попытка {attempt+1}: {e}")
             time.sleep(3)
@@ -321,7 +305,7 @@ def run():
     print("\n🤖 РАБОТА КОМБАЙНА")
     print("-" * 45)
 
-    post = generate_post_with_gpt(topic)
+    post = generate_post_with_pollinations(topic)
     if not post:
         print("❌ Не удалось сгенерировать пост")
         return
