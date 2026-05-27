@@ -2,8 +2,10 @@ name: Комбайн Кафедра выживания
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
+    # Два раза в день (в UTC)
+    - cron: '0 2 * * *'   # 07:00 MSK
+    - cron: '0 12 * * *'  # 17:00 MSK
+  workflow_dispatch:      # Ручной запуск
 
 permissions:
   contents: write
@@ -12,9 +14,6 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: 🕐 Show time
-        run: echo "Running at $(date -u)"
-      
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
