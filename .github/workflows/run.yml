@@ -3,7 +3,7 @@ name: Комбайн Кафедра выживания
 on:
   schedule:
     - cron: '0 07 * * *'
-    - cron: '40 16 * * *'
+    - cron: '50 16 * * *'
   workflow_dispatch:
 
 permissions:
