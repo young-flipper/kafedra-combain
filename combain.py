@@ -5,9 +5,11 @@ import os
 import json
 import time
 import sqlite3
+import random
 import requests
 import urllib3
 from datetime import datetime
+from urllib.parse import quote
 from threading import Lock
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -18,11 +20,11 @@ TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 MAX_TOPICS_IN_MEMORY = 100
 
 # GigaChat авторизация
-GIGACHAT_AUTH_KEY = "MDE5ZTY5NjgtOTc3OS03OWVhLTg2ZTYtZTM4NWJlNGU4YTUwOmVjOWU2NmI0LWM2YjUtNGFmNy05YmI0LTkyYzY4Y2VlMWY2ZA=="
+GIGACHAT_AUTH_KEY = os.environ.get("GIGACHAT_AUTH_KEY", "")
 # =================================
 
 print("📚 НЕЙРОСЕТЕВОЙ КОМБАЙН — КАФЕДРА ВЫЖИВАНИЯ")
-print("🤖 GigaChat + Kandinsky (полностью отечественное решение)\n")
+print("🤖 GigaChat (текст) + Flux (картинки)\n")
 
 
 class MemoryDB:
@@ -103,31 +105,19 @@ def get_next_topic():
     return topic
 
 
-def get_giga_client():
-    """Создаёт клиент GigaChat"""
-    try:
-        from gigachat import GigaChat
-        from gigachat.models import Chat, Messages, MessagesRole
-        return GigaChat(
-            credentials=GIGACHAT_AUTH_KEY,
-            scope="GIGACHAT_API_PERS",
-            verify_ssl_certs=False
-        )
-    except ImportError:
-        print("❌ Установите gigachat: pip install gigachat")
-        return None
-
-
 def generate_post_gigachat(topic):
     """Генерация текста через GigaChat"""
     print("🤖 GigaChat генерирует текст...")
 
-    giga = get_giga_client()
-    if not giga:
-        return None
-
     try:
+        from gigachat import GigaChat
         from gigachat.models import Chat, Messages, MessagesRole
+
+        giga = GigaChat(
+            credentials=GIGACHAT_AUTH_KEY,
+            scope="GIGACHAT_API_PERS",
+            verify_ssl_certs=False
+        )
 
         clean_topic = topic.split(":")[-1].strip()
 
@@ -153,65 +143,36 @@ def generate_post_gigachat(topic):
             print(f"✅ Пост готов ({len(text)} символов)")
             return text
 
+    except ImportError:
+        print("❌ Установите gigachat: pip install gigachat")
     except Exception as e:
         print(f"⚠️ Ошибка GigaChat: {e}")
 
     return None
 
 
-def generate_image_kandinsky(topic):
-    """Генерация картинки через Kandinsky (через GigaChat)"""
-    print("🎨 Kandinsky генерирует картинку...")
+def generate_image_flux(topic):
+    """Генерация картинки через Flux (Pollinations.ai)"""
+    print("🎨 Flux генерирует картинку...")
 
-    giga = get_giga_client()
-    if not giga:
-        return None
+    seed = random.randint(1000, 99999)
+    clean_topic = topic.split(":")[-1].strip()
+
+    # Улучшенный промпт для учебных картинок
+    prompt = f"Учебная иллюстрация для студентов. Тема: {clean_topic}. Современный стиль, яркие цвета, позитивная атмосфера. Книги, ноутбук, знания, мотивация."
+
+    encoded = quote(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&seed={seed}"
 
     try:
-        from gigachat.models import Chat, Messages, MessagesRole
-
-        clean_topic = topic.split(":")[-1].strip()
-        prompt = f"Нарисуй иллюстрацию для учебного поста. Тема: {clean_topic}. Стиль: современный, яркий, для Telegram-канала."
-
-        payload = Chat(
-            messages=[
-                Messages(
-                    role=MessagesRole.USER,
-                    content=prompt
-                )
-            ],
-            functions=[{"name": "text2image"}],
-            function_call="auto"
-        )
-
-        response = giga.chat(payload)
-
-        # Из ответа достаём ID картинки
-        if response.choices and response.choices[0].message.function_call:
-            function_call = response.choices[0].message.function_call
-            if function_call.name == "text2image":
-                # ID картинки в аргументах
-                import json as json_lib
-                args = json_lib.loads(function_call.arguments)
-                file_id = args.get("file_id")
-
-                if file_id:
-                    # Скачиваем картинку
-                    image_url = f"https://gigachat.devices.sberbank.ru/api/v1/files/{file_id}/content"
-                    headers = {
-                        "Authorization": f"Bearer {giga._access_token}",
-                        "Accept": "application/octet-stream"
-                    }
-                    image_response = requests.get(image_url, headers=headers, verify=False)
-                    if image_response.status_code == 200:
-                        with open("post_image.jpg", "wb") as f:
-                            f.write(image_response.content)
-                        print("✅ Картинка готова")
-                        return "post_image.jpg"
-
+        r = requests.get(url, timeout=60)
+        if r.status_code == 200 and 'image' in r.headers.get('content-type', ''):
+            with open("post_image.jpg", "wb") as f:
+                f.write(r.content)
+            print("✅ Картинка готова")
+            return "post_image.jpg"
     except Exception as e:
-        print(f"⚠️ Ошибка Kandinsky: {e}")
-
+        print(f"⚠️ Ошибка: {e}")
     return None
 
 
@@ -267,7 +228,7 @@ def run():
 
     print(f"\n📝 Пост:\n{post}\n")
 
-    image = generate_image_kandinsky(topic)
+    image = generate_image_flux(topic)
 
     success = send_to_telegram(post, image)
 
