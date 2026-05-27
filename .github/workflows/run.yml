@@ -2,7 +2,7 @@ name: Комбайн Кафедра выживания
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'  # Каждые 10 минут для теста
   workflow_dispatch:
 
 permissions:
@@ -12,6 +12,9 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      - name: 🕐 Show time
+        run: echo "Running at $(date -u)"
+      
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
