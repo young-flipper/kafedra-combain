@@ -2,8 +2,8 @@ name: Комбайн Кафедра выживания
 
 on:
   schedule:
-    - cron: '0 10 * * *'
-    - cron: '0 17 * * *'
+    - cron: '0 07 * * *'
+    - cron: '0 12 * * *'
   workflow_dispatch:
 
 jobs:
