@@ -6,7 +6,6 @@ import json
 import time
 import sqlite3
 import random
-import re
 import requests
 import urllib3
 from datetime import datetime
@@ -19,10 +18,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 TELEGRAM_BOT_TOKEN = "8300024794:AAHSkOz6kXKPOfqQt0qtrKPJo2oryh301hg"
 TELEGRAM_CHANNEL_ID = "@kafedra_vizhivaniya"
 MAX_TOPICS_IN_MEMORY = 100
+
+# Hugging Face токен (получить бесплатно: huggingface.co/settings/tokens)
+HF_TOKEN = "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"
 # =================================
 
 print("📚 НЕЙРОСЕТЕВОЙ КОМБАЙН — КАФЕДРА ВЫЖИВАНИЯ")
-print("🤖 Pollinations.ai (текст + картинки) | Учебный контент\n")
+print("🤖 Hugging Face (Mistral) + Flux\n")
 
 
 class MemoryDB:
@@ -122,127 +124,75 @@ def get_post_type(topic):
         return "general"
 
 
-def clean_post(text):
-    if not text:
-        return text
-    lines = text.split('\n')
-    clean_lines = []
-    for line in lines:
-        if line.strip():
-            clean_lines.append(line.strip())
-    result = '\n'.join(clean_lines)
-    result = re.sub(r'\n{3,}', '\n\n', result)
-    return result.strip()
-
-
-def generate_post_with_pollinations(topic):
-    print("📝 Pollinations.ai пишет пост...")
+def generate_post_huggingface(topic):
+    """Генерация поста через Hugging Face (Mistral-7B)"""
+    print("🤖 Hugging Face генерирует текст...")
 
     post_type = get_post_type(topic)
+    topic_clean = topic.split(":")[-1].strip()
 
-    prompts = {
-        "notes": f"""Ты автор учебного Telegram-канала. Напиши краткий понятный конспект на тему: {topic}
-
-Формат:
-- Используй списки и эмодзи
-- Разбивай на смысловые блоки
-- В конце добавь хэштег #конспект
-- Длина: 350-500 символов
-
-Пост:""",
-
-        "lifehack": f"""Ты автор учебного Telegram-канала. Напиши короткий практичный лайфхак на тему: {topic}
+    system_prompt = f"""Ты автор учебного Telegram-канала. Напиши пост для студентов. Тип поста: {post_type}. Тема: {topic_clean}.
 
 Формат:
-- Один чёткий совет
-- По делу, без воды
-- С эмодзи
-- В конце хэштег #лайфхак
-- Длина: 200-350 символов
-
-Пост:""",
-
-        "tool": f"""Ты автор учебного Telegram-канала. Опиши полезный инструмент (программу, приложение, фишку) на тему: {topic}
-
-Формат:
-- Что это и зачем
-- Как использовать (кратко)
-- Эмодзи
-- В конце хэштег #инструмент
-- Длина: 300-450 символов
-
-Пост:""",
-
-        "motivation": f"""Ты автор учебного Telegram-канала. Напиши короткий мотивирующий пост на тему: {topic}
-
-Формат:
-- Яркий, дружелюбный
-- Поддерживающий тон
-- Эмодзи
-- В конце хэштег #мотивация
-- Длина: 200-350 символов
-
-Пост:""",
-
-        "calm": f"""Ты автор учебного Telegram-канала. Напиши совет по борьбе со стрессом или тайм-менеджменту на тему: {topic}
-
-Формат:
-- Конкретный приём
-- Без лишних слов
-- Эмодзи
-- В конце хэштег #безпаники
-- Длина: 250-400 символов
-
-Пост:""",
-
-        "general": f"""Ты автор учебного Telegram-канала. Напиши полезный пост для студентов на тему: {topic}
-
-Формат:
-- Дружелюбно, с эмодзи
-- Практично
-- Длина: 300-500 символов
+- Длина: 250-450 символов
+- Используй эмодзи
+- Дружелюбный, поддерживающий тон
+- В конце хэштег (например #мотивация, #конспект, #лайфхак, #инструмент, #безпаники)
 
 Пост:"""
-    }
 
-    prompt_text = prompts.get(post_type, prompts["general"])
-    encoded = quote(prompt_text)
-    url = f"https://text.pollinations.ai/{encoded}"
+    API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {
+        "inputs": system_prompt,
+        "parameters": {
+            "max_new_tokens": 300,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "do_sample": True
+        }
+    }
 
     for attempt in range(3):
         try:
-            response = requests.get(url, timeout=60)
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
             if response.status_code == 200:
-                text = response.text.strip()
-                if len(text) > 100:
-                    print(f"✅ Пост готов ({len(text)} символов)")
-                    return text
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    text = result[0].get('generated_text', '')
+                    # Убираем повтор промпта
+                    if text.startswith(system_prompt):
+                        text = text[len(system_prompt):]
+                    if len(text.strip()) > 100:
+                        print(f"✅ Пост готов ({len(text)} символов)")
+                        return text.strip()
+            elif response.status_code == 503:
+                print(f"⏳ Модель загружается, ждём... (попытка {attempt+1})")
+                time.sleep(5)
+            else:
+                print(f"⚠️ Ошибка HF: {response.status_code}")
         except Exception as e:
             print(f"⚠️ Попытка {attempt+1}: {e}")
             time.sleep(3)
+
     return None
 
 
 def generate_image_for_post(topic, post_type):
     print("🎨 Flux генерирует картинку...")
-
     rand_seed = random.randint(1000, 99999)
 
-    if post_type == "notes":
-        style = "схема, интеллект-карта, учебные заметки, структура, таблица"
-    elif post_type == "lifehack":
-        style = "лайфхак, быстрый совет, чек-лист, инфографика, яркие элементы"
-    elif post_type == "tool":
-        style = "интерфейс программы, приложение, компьютер, утилита, современный гаджет"
-    elif post_type == "motivation":
-        style = "мотивационная картинка, яркие цвета, вдохновение, цитата, успех"
-    elif post_type == "calm":
-        style = "спокойствие, отдых, студент расслабляется, мягкие тона"
-    else:
-        style = "учеба, студенты, книги, ноутбук, современный стиль"
+    style_map = {
+        "notes": "схема, интеллект-карта, учебные заметки",
+        "lifehack": "лайфхак, инфографика, чек-лист",
+        "tool": "интерфейс программы, приложение, ноутбук",
+        "motivation": "мотивационная картинка, яркие цвета, вдохновение",
+        "calm": "спокойствие, расслабление, мягкие тона",
+        "general": "учеба, студенты, книги"
+    }
+    style = style_map.get(post_type, style_map["general"])
 
-    prompt = f"{topic}, {style}, качественная иллюстрация, сочный цвет, современный дизайн, уникальный стиль ID {rand_seed}"
-
+    prompt = f"{topic}, {style}, качественная иллюстрация, сочный цвет, современный дизайн, seed {rand_seed}"
     encoded = quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&seed={rand_seed}"
 
@@ -260,7 +210,6 @@ def generate_image_for_post(topic, post_type):
 
 def send_to_telegram(text, image_path=None):
     print("📤 Отправка в Telegram...")
-    text = clean_post(text)
     try:
         if image_path and os.path.exists(image_path):
             with open(image_path, "rb") as photo:
@@ -305,7 +254,7 @@ def run():
     print("\n🤖 РАБОТА КОМБАЙНА")
     print("-" * 45)
 
-    post = generate_post_with_pollinations(topic)
+    post = generate_post_huggingface(topic)
     if not post:
         print("❌ Не удалось сгенерировать пост")
         return
