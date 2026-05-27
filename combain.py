@@ -15,12 +15,12 @@ from threading import Lock
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ========== НАСТРОЙКИ ==========
-TELEGRAM_BOT_TOKEN = "8300024794:AAHSkOz6kXKPOfqQt0qtrKPJo2oryh301hg"
-TELEGRAM_CHANNEL_ID = "@kafedra_vizhivaniya"
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 MAX_TOPICS_IN_MEMORY = 100
 
-# Hugging Face токен (получить бесплатно: huggingface.co/settings/tokens)
-HF_TOKEN = "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"
+# Hugging Face токен
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 # =================================
 
 print("📚 НЕЙРОСЕТЕВОЙ КОМБАЙН — КАФЕДРА ВЫЖИВАНИЯ")
