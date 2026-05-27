@@ -4,21 +4,18 @@
 import os
 import json
 import time
-import sqlite3
 import random
 import requests
 import urllib3
 import subprocess
 from datetime import datetime
 from urllib.parse import quote
-from threading import Lock
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ========== НАСТРОЙКИ ==========
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
-MAX_TOPICS_IN_MEMORY = 100
 
 # GigaChat авторизация
 GIGACHAT_AUTH_KEY = os.environ.get("GIGACHAT_AUTH_KEY", "")
@@ -26,47 +23,6 @@ GIGACHAT_AUTH_KEY = os.environ.get("GIGACHAT_AUTH_KEY", "")
 
 print("📚 НЕЙРОСЕТЕВОЙ КОМБАЙН — КАФЕДРА ВЫЖИВАНИЯ")
 print("🤖 GigaChat (текст) + Flux (картинки)\n")
-
-
-class MemoryDB:
-    def __init__(self, db_path="memory.db"):
-        self.db_path = db_path
-        self.lock = Lock()
-        self._init_db()
-
-    def _init_db(self):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            c = conn.cursor()
-            c.execute('CREATE TABLE IF NOT EXISTS used_topics (id INTEGER PRIMARY KEY, topic TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
-            conn.commit()
-            conn.close()
-
-    def is_used(self, topic):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            c = conn.cursor()
-            c.execute("SELECT 1 FROM used_topics WHERE topic = ?", (topic,))
-            result = c.fetchone() is not None
-            conn.close()
-            return result
-
-    def add(self, topic):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            c = conn.cursor()
-            c.execute("INSERT INTO used_topics (topic) VALUES (?)", (topic,))
-            conn.commit()
-            conn.close()
-
-    def get_stats(self):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM used_topics")
-            count = c.fetchone()[0]
-            conn.close()
-            return count
 
 
 def get_topics():
@@ -96,7 +52,6 @@ def save_topics(topics):
     with open("topics.json", "w", encoding="utf-8") as f:
         json.dump(topics, f, ensure_ascii=False, indent=2)
 
-    # Автоматический коммит и пуш для GitHub Actions
     if os.environ.get("GITHUB_ACTIONS") == "true":
         print("📤 Отправка обновлений в репозиторий...")
         try:
@@ -120,7 +75,6 @@ def get_next_topic():
 
 
 def generate_post_gigachat(topic):
-    """Генерация текста через GigaChat с принудительными хэштегами"""
     print("🤖 GigaChat генерирует текст...")
 
     if not GIGACHAT_AUTH_KEY:
@@ -139,7 +93,6 @@ def generate_post_gigachat(topic):
 
         clean_topic = topic.split(":")[-1].strip()
 
-        # Определяем тип поста для правильных хэштегов
         topic_lower = topic.lower()
         if "мотивация" in topic_lower or "витаминка" in topic_lower:
             hashtags = "#мотивация #студенты #учеба"
@@ -158,7 +111,7 @@ def generate_post_gigachat(topic):
             messages=[
                 Messages(
                     role=MessagesRole.SYSTEM,
-                    content="Ты автор учебного Telegram-канала. Пиши коротко, с эмодзи, дружелюбно. НЕ используй ** для жирного шрифта. НЕ добавляй хэштеги — они будут добавлены автоматически."
+                    content="Ты автор учебного Telegram-канала. Пиши коротко, с эмодзи, дружелюбно. НЕ используй **. НЕ добавляй хэштеги."
                 ),
                 Messages(
                     role=MessagesRole.USER,
@@ -171,15 +124,7 @@ def generate_post_gigachat(topic):
 
         response = giga.chat(payload)
         text = response.choices[0].message.content.strip()
-
-        # Убираем маркеры жирного шрифта
         text = text.replace("**", "")
-
-        # Убираем хэштеги, если нейросеть их случайно добавила
-        import re
-        text = re.sub(r'#\S+', '', text)
-
-        # Добавляем наши хэштеги в конец
         text = text.strip() + f"\n\n{hashtags}"
 
         if len(text) > 50:
@@ -195,13 +140,12 @@ def generate_post_gigachat(topic):
 
 
 def generate_image_flux(topic):
-    """Генерация картинки через Flux (Pollinations.ai)"""
     print("🎨 Flux генерирует картинку...")
 
     seed = random.randint(1000, 99999)
     clean_topic = topic.split(":")[-1].strip()
 
-    prompt = f"Учебная иллюстрация для студентов. Тема: {clean_topic}. Современный стиль, яркие цвета, позитивная атмосфера. Книги, ноутбук, знания, мотивация."
+    prompt = f"Учебная иллюстрация для студентов. Тема: {clean_topic}. Современный стиль, яркие цвета, позитивная атмосфера."
 
     encoded = quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&seed={seed}"
@@ -245,20 +189,12 @@ def run():
     print(f"🚀 ЗАПУСК: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 55)
 
-    memory = MemoryDB()
-    used_count = memory.get_stats()
-    print(f"📊 Уже опубликовано постов: {used_count}")
-
     topic = get_next_topic()
     if not topic:
         print("✅ Все темы использованы! Добавьте новые в topics.json")
         return
 
     print(f"📌 Тема: {topic}")
-
-    if memory.is_used(topic):
-        print(f"⚠️ Тема '{topic}' уже публиковалась!")
-        return
 
     print("\n🤖 РАБОТА КОМБАЙНА")
     print("-" * 45)
@@ -273,9 +209,6 @@ def run():
     image = generate_image_flux(topic)
 
     success = send_to_telegram(post, image)
-
-    if success:
-        memory.add(topic)
 
     if image and os.path.exists(image):
         os.remove(image)
