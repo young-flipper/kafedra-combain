@@ -14,14 +14,12 @@ from threading import Lock
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ========== НАСТРОЙКИ ==========
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 MAX_TOPICS_IN_MEMORY = 100
-# =================================
 
 print("📚 НЕЙРОСЕТЕВОЙ КОМБАЙН — КАФЕДРА ВЫЖИВАНИЯ")
-print("🤖 GPT-4o-mini (g4f) + Flux\n")
+print("🤖 Pollinations.ai (текст + картинки)\n")
 
 
 class MemoryDB:
@@ -102,42 +100,35 @@ def get_next_topic():
     return topic
 
 
-def generate_post_with_g4f(topic):
-    print("🤖 GPT-4o-mini генерирует текст...")
-    try:
-        from g4f.client import Client
-        from g4f.Provider import Liaobots
-        client = Client()
-    except ImportError:
-        print("❌ Ошибка: g4f не установлен. Выполните: pip install -U g4f[all]")
-        return None
-
+def generate_post(topic):
+    """Генерация текста через Pollinations.ai"""
+    print("🤖 Pollinations.ai генерирует текст...")
     clean_topic = topic.split(":")[-1].strip()
-    prompt = f"Напиши пост для Telegram-канала про учёбу. Тема: {clean_topic}. 3-4 предложения. С эмодзи. Дружелюбно. Без рекламы."
+    prompt = f"Напиши короткий пост для студентов про: {clean_topic}. 3-4 предложения. С эмодзи. Дружелюбно. Без рекламы."
+    encoded = quote(prompt)
+    url = f"https://text.pollinations.ai/{encoded}"
 
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                provider=Liaobots
-            )
-            text = response.choices[0].message.content.strip()
-            if len(text) > 80:
+            r = requests.get(url, timeout=60)
+            if r.status_code == 200 and len(r.text) > 80:
+                text = r.text.strip()
                 print(f"✅ Пост готов ({len(text)} символов)")
                 return text
         except Exception as e:
-            print(f"⚠️ Попытка {attempt+1} не удалась: {e}")
+            print(f"⚠️ Попытка {attempt+1}: {e}")
             time.sleep(3)
     return None
 
 
 def generate_image(topic):
-    print("🎨 Flux генерирует картинку...")
+    """Генерация картинки через Pollinations.ai (Flux)"""
+    print("🎨 Pollinations.ai генерирует картинку...")
     seed = random.randint(1000, 99999)
     prompt = f"{topic}, учебная иллюстрация, современный стиль, сочные цвета, seed {seed}"
     encoded = quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&seed={seed}"
+
     try:
         r = requests.get(url, timeout=60)
         if r.status_code == 200 and 'image' in r.headers.get('content-type', ''):
@@ -195,7 +186,7 @@ def run():
     print("\n🤖 РАБОТА КОМБАЙНА")
     print("-" * 45)
 
-    post = generate_post_with_g4f(topic)
+    post = generate_post(topic)
     if not post:
         print("❌ Не удалось сгенерировать пост")
         return
